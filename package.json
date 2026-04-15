@@ -1,0 +1,16 @@
+{
+  "name": "opencode-snapshot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsx build_snapshot.ts"
+  },
+  "dependencies": {
+    "@daytona/sdk": "latest",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

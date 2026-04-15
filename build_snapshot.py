@@ -43,6 +43,10 @@ def main():
     print()
 
     image = Image.from_dockerfile(str(dockerfile_path))
+    image._dockerfile = image._dockerfile.replace(
+        "ARG OPENCODE_REF=dev",
+        f"ARG OPENCODE_REF={OPENCODE_REF}",
+    )
     t0 = time.perf_counter()
 
     snapshot = daytona.snapshot.create(
@@ -85,14 +89,28 @@ def main():
         sandbox.delete()
         return
 
-    result = sandbox.process.exec(
-        "opencode serve --port 4096 --hostname 127.0.0.1 &"
-        " sleep 3 && curl -sf http://127.0.0.1:4096/doc | head -c 200",
-        timeout=30,
-    )
-    print(f"    serve check exit code: {result.exit_code}")
-    if result.result.strip():
-        print(f"    /doc response (first 200 chars): {result.result.strip()[:200]}")
+    if not _check_serve(sandbox):
+        sandbox.delete()
+        return
+
+    # --- Phase 4: Stop → Start → Re-verify ---
+    print("\n=== Stopping sandbox ===")
+    t0 = time.perf_counter()
+    sandbox.stop(timeout=60)
+    print(f"    Stopped ({time.perf_counter() - t0:.1f}s)")
+
+    print("\n=== Starting sandbox ===")
+    t0 = time.perf_counter()
+    sandbox.start(timeout=60)
+    print(f"    Started ({time.perf_counter() - t0:.1f}s)")
+
+    print("\n=== Re-verifying after restart ===")
+    result = sandbox.process.exec("opencode --version", timeout=30)
+    print(f"    opencode --version: {result.result.strip()}")
+
+    if not _check_serve(sandbox):
+        sandbox.delete()
+        return
 
     # --- Cleanup ---
     print("\n=== Cleaning up sandbox ===")
@@ -103,6 +121,24 @@ def main():
     print(f"    Snapshot ready: {snapshot.name}")
     print(f"    Create a sandbox with:")
     print(f'      daytona create --snapshot {snapshot.name}')
+
+
+def _check_serve(sandbox) -> bool:
+    """Start opencode serve, hit the health endpoint, return True if healthy."""
+    result = sandbox.process.exec(
+        "cd /workspace && opencode serve --port 4096 --hostname 127.0.0.1 > /tmp/serve.log 2>&1 &"
+        " sleep 4 && curl -sf http://127.0.0.1:4096/global/health",
+        timeout=30,
+    )
+    print(f"    serve health check exit code: {result.exit_code}")
+    body = result.result.strip()
+    if body:
+        print(f"    /global/health: {body[:300]}")
+        return True
+    else:
+        logs = sandbox.process.exec("cat /tmp/serve.log", timeout=10)
+        print(f"    WARNING: health check got no response. Server logs:\n{logs.result.strip()[:500]}")
+        return False
 
 
 def _get_env(key: str) -> str:

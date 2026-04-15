@@ -39,6 +39,8 @@ RUN chmod +x /usr/local/bin/opencode.sh
 
 WORKDIR /workspace
 
+RUN echo '{"provider":{"openai":{"models":{"gpt-4o":{}}}}}' > /workspace/.opencode.json
+
 EXPOSE 4096
 
 ENTRYPOINT ["/usr/local/bin/opencode.sh"]
